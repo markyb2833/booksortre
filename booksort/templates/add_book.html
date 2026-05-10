@@ -52,6 +52,28 @@
             height: auto;
             margin-right: 15px;
         }
+        .cover-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+            gap: 0.75rem;
+        }
+        .cover-choice {
+            background: #252525;
+            border: 1px solid #444;
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            cursor: pointer;
+        }
+        .cover-choice:hover {
+            border-color: #8ab4ff;
+        }
+        .cover-choice img {
+            width: 100%;
+            height: 120px;
+            object-fit: contain;
+            display: block;
+            margin-bottom: 0.4rem;
+        }
         .navbar .container {
             display: flex;
             flex-wrap: wrap;
@@ -157,6 +179,18 @@
                         <textarea class="form-control" id="description" name="description" rows="3"></textarea>
                     </div>
                     <input type="hidden" id="cover_url" name="cover_url">
+                    <div class="mb-3">
+                        <label for="addCoverUrl" class="form-label">Cover URL</label>
+                        <div class="input-group">
+                            <input type="url" class="form-control" id="addCoverUrl" placeholder="https://...">
+                            <button class="btn btn-outline-secondary" type="button" id="searchCoverButton">Search Covers</button>
+                            <button class="btn btn-outline-secondary" type="button" id="clearCoverButton">Clear</button>
+                        </div>
+                        <div class="mt-2">
+                            <img id="addCoverPreview" src="" alt="Cover preview" style="max-width: 100px; max-height: 150px; display: none;" class="border" loading="lazy" decoding="async">
+                        </div>
+                        <div class="cover-gallery mt-3" id="addCoverGallery"></div>
+                    </div>
                     <input type="hidden" id="rating" name="rating">
                     <button type="submit" class="btn btn-primary">Add Book</button>
                     <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Cancel</a>
@@ -205,15 +239,8 @@
                             `;
 
                             resultDiv.addEventListener('click', () => {
-                                document.getElementById('title').value = book.title || '';
-                                document.getElementById('author').value = book.author || '';
-                                document.getElementById('isbn').value = book.isbn || '';
-                                document.getElementById('publication_year').value = book.publication_year || '';
-                                document.getElementById('description').value = book.description || '';
-                                document.getElementById('cover_url').value = book.cover_url || '';
-                                document.getElementById('rating').value = book.rating || '';
-                                document.getElementById('genre').value = book.genre || '';
-                                
+                                fillBookForm(book);
+                                renderCoverGallery(data.filter(candidate => candidate.cover_url).slice(0, 5));
                                 resultsDiv.style.display = 'none';
                             });
 
@@ -230,6 +257,95 @@
                     resultsDiv.style.display = 'block';
                 });
         }
+
+        function fillBookForm(book) {
+            document.getElementById('title').value = book.title || '';
+            document.getElementById('author').value = book.author || '';
+            document.getElementById('isbn').value = book.isbn || '';
+            document.getElementById('publication_year').value = book.publication_year || '';
+            document.getElementById('description').value = book.description || '';
+            document.getElementById('rating').value = book.rating || '';
+            document.getElementById('genre').value = book.genre || '';
+            setAddCover(book.cover_url || '');
+        }
+
+        function setAddCover(url) {
+            const hiddenInput = document.getElementById('cover_url');
+            const visibleInput = document.getElementById('addCoverUrl');
+            const preview = document.getElementById('addCoverPreview');
+            hiddenInput.value = url || '';
+            visibleInput.value = url || '';
+            if (url) {
+                preview.src = url;
+                preview.style.display = 'block';
+            } else {
+                preview.removeAttribute('src');
+                preview.style.display = 'none';
+            }
+        }
+
+        function clearCover() {
+            setAddCover('');
+            document.getElementById('addCoverGallery').innerHTML = '';
+        }
+
+        function renderCoverGallery(books) {
+            const gallery = document.getElementById('addCoverGallery');
+            gallery.innerHTML = '';
+
+            books.forEach(book => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'cover-choice';
+                button.innerHTML = `
+                    <img src="${book.cover_url}" alt="Cover option" loading="lazy" decoding="async">
+                    <small>${book.title || 'Cover option'}</small>
+                `;
+                button.addEventListener('click', () => {
+                    setAddCover(book.cover_url);
+                });
+                gallery.appendChild(button);
+            });
+        }
+
+        function searchCovers() {
+            const title = document.getElementById('title').value;
+            const author = document.getElementById('author').value;
+            const query = `${title} ${author}`.trim() || document.getElementById('searchInput').value.trim();
+            if (!query) {
+                alert('Please enter a title and/or author first');
+                return;
+            }
+
+            fetch(`/search_book?q=${encodeURIComponent(query)}`)
+                .then(async response => {
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Error searching for cover image');
+                    }
+                    return data;
+                })
+                .then(data => {
+                    const coverChoices = data.filter(book => book.cover_url).slice(0, 5);
+                    renderCoverGallery(coverChoices);
+                    if (coverChoices.length && !document.getElementById('cover_url').value) {
+                        setAddCover(coverChoices[0].cover_url);
+                    }
+                    if (!coverChoices.length) {
+                        alert('No cover image found for this book');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error searching for cover image: ' + error.message);
+                });
+        }
+
+        document.getElementById('addCoverUrl').addEventListener('input', function() {
+            setAddCover(this.value);
+        });
+        document.getElementById('searchCoverButton').addEventListener('click', searchCovers);
+        document.getElementById('clearCoverButton').addEventListener('click', clearCover);
     </script>
 </body>
 </html> 

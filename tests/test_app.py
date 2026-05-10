@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from booksort import create_app
 from booksort.extensions import db
+from booksort.google_books import GoogleBooksUnavailable, search_google_books
 from booksort.models import Book
 
 
@@ -160,6 +161,67 @@ class BookSortTests(unittest.TestCase):
         self.assertEqual(duplicate.json["error"], "Possible duplicate book")
         self.assertIn("book", duplicate.json["duplicates"][0])
         self.assertEqual(forced.status_code, 201)
+
+    def test_google_books_outage_returns_friendly_search_error(self):
+        with patch(
+            "booksort.routes.search_google_books",
+            side_effect=GoogleBooksUnavailable("Google Books is temporarily unavailable."),
+        ):
+            response = self.client.get("/search_book?q=james+bond")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json["error"], "Google Books is temporarily unavailable.")
+        self.assertTrue(response.json["manual_add_available"])
+
+    def test_book_search_falls_back_to_open_library(self):
+        google_error = GoogleBooksUnavailable("Google failed")
+        open_library_data = {
+            "docs": [
+                {
+                    "title": "Casino Royale",
+                    "author_name": ["Ian Fleming"],
+                    "isbn": ["9780099576853"],
+                    "first_publish_year": 1953,
+                    "cover_i": 123,
+                }
+            ]
+        }
+
+        with patch(
+            "booksort.google_books._fetch_json",
+            side_effect=[google_error, google_error, google_error, open_library_data],
+        ):
+            results = search_google_books("james bond")
+
+        self.assertEqual(results[0]["title"], "Casino Royale")
+        self.assertEqual(results[0]["author"], "Ian Fleming")
+        self.assertEqual(results[0]["source"], "Open Library")
+
+    def test_book_search_ranks_exact_title_matches_first(self):
+        google_data = {
+            "items": [
+                {
+                    "volumeInfo": {
+                        "title": "Irish Texts Society",
+                        "authors": [],
+                        "publishedDate": "1899",
+                    }
+                },
+                {
+                    "volumeInfo": {
+                        "title": "King of the World",
+                        "authors": ["David Remnick"],
+                        "publishedDate": "2015",
+                        "imageLinks": {"thumbnail": "https://example.com/cover.jpg"},
+                    }
+                },
+            ]
+        }
+
+        with patch("booksort.google_books._fetch_json", return_value=google_data):
+            results = search_google_books("king of the world")
+
+        self.assertEqual(results[0]["title"], "King of the World")
 
     def test_archive_and_restore(self):
         book = self.add_book()

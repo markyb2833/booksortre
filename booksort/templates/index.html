@@ -58,6 +58,17 @@
             border-top-left-radius: calc(0.375rem - 1px);
             border-bottom-left-radius: calc(0.375rem - 1px);
         }
+        .cover-container.lazy-cover-pending::after {
+            content: "Cover";
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #777;
+            font-size: 0.85rem;
+            pointer-events: none;
+        }
         .book-cover {
             width: 100%;
             height: 100%;
@@ -89,6 +100,10 @@
             display: flex;
             flex-direction: column;
             min-height: 0;
+        }
+        .book-card-column {
+            content-visibility: auto;
+            contain-intrinsic-size: 1px 540px;
         }
         .card-title {
             font-size: 1.1rem;
@@ -1112,6 +1127,19 @@
                     </div>
                     <input type="hidden" id="cover_url" name="cover_url">
                     <input type="hidden" id="rating" name="rating">
+                    <div class="modal-section">
+                        <h6>Cover</h6>
+                        <label for="addCoverUrl" class="form-label">Cover URL</label>
+                        <div class="input-group">
+                            <input type="url" class="form-control" id="addCoverUrl" placeholder="https://...">
+                            <button type="button" class="btn btn-outline-secondary" onclick="searchForAddCover()">Search Covers</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="clearAddCover()">Clear</button>
+                        </div>
+                        <div class="mt-2">
+                            <img id="addCoverPreview" src="" alt="Cover preview" style="max-width: 100px; max-height: 150px; display: none;" class="border" loading="lazy" decoding="async">
+                        </div>
+                        <div class="cover-gallery mt-3" id="addCoverGallery"></div>
+                    </div>
                     <button type="submit" class="btn btn-primary">Add Book</button>
                 </form>
             </div>
@@ -1189,7 +1217,9 @@
         {% if books %}
             <div class="row g-4" id="bookGrid">
                 {% for book in books %}
-                    <div class="col-md-4 mb-4"
+                    <div class="col-md-4 mb-4 book-card-column"
+                         data-book-id="{{ book.id }}"
+                         data-personal-rating="{{ book.personal_rating or 0 }}"
                          data-archived="{{ 'true' if book.archived else 'false' }}"
                          data-missing-cover="{{ 'true' if not book.cover_url else 'false' }}"
                          data-missing-isbn="{{ 'true' if not book.isbn else 'false' }}"
@@ -1203,7 +1233,7 @@
                             <div class="bulk-select-wrap">
                                 <input class="form-check-input bulk-select" type="checkbox" data-book-id="{{ book.id }}" title="Select for bulk update">
                             </div>
-                            <div class="cover-container">
+                            <div class="cover-container{% if book.cover_url %} lazy-cover-pending{% endif %}">
                                 {% if book.cover_url %}
                                     <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" data-lazy-cover="{{ book.cover_url }}" class="book-cover" alt="{{ book.title }} cover" decoding="async" width="120" height="180">
                                 {% else %}
@@ -1535,6 +1565,7 @@
             image.dataset.lazyLoaded = 'true';
             image.addEventListener('load', () => {
                 image.classList.add('cover-loaded');
+                image.closest('.cover-container')?.classList.remove('lazy-cover-pending');
             }, { once: true });
             image.addEventListener('error', () => {
                 image.classList.add('cover-loaded', 'cover-error');
@@ -1563,6 +1594,40 @@
             });
 
             lazyCovers.forEach(image => observer.observe(image));
+        }
+
+        function initializeBookCardControls(card) {
+            if (!card || card.dataset.controlsReady === 'true') return;
+
+            const bookId = parseInt(card.dataset.bookId, 10);
+            if (!bookId) return;
+
+            card.dataset.controlsReady = 'true';
+            initializeBookRating(bookId, parseFloat(card.dataset.personalRating || '0') || 0);
+            initializeFormTracking(bookId);
+        }
+
+        function initializeVisibleBookControls() {
+            const cards = document.querySelectorAll('.book-card-column[data-book-id]');
+            if (!cards.length) return;
+
+            if (!('IntersectionObserver' in window)) {
+                cards.forEach(initializeBookCardControls);
+                return;
+            }
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    initializeBookCardControls(entry.target);
+                    observer.unobserve(entry.target);
+                });
+            }, {
+                rootMargin: '700px 0px',
+                threshold: 0.01,
+            });
+
+            cards.forEach(card => observer.observe(card));
         }
 
         function searchBooks() {
@@ -1597,18 +1662,8 @@
                             `;
 
                             resultDiv.addEventListener('click', () => {
-                                document.getElementById('title').value = book.title || '';
-                                document.getElementById('author').value = book.author || '';
-                                document.getElementById('isbn').value = book.isbn || '';
-                                document.getElementById('publication_year').value = book.publication_year || '';
-                                document.getElementById('description').value = book.description || '';
-                                document.getElementById('cover_url').value = book.cover_url || '';
-                                document.getElementById('rating').value = book.rating || '';
-                                document.getElementById('genre').value = book.genre || '';
-                                document.getElementById('series_name').value = book.series_name || '';
-                                document.getElementById('series_number').value = book.series_number || '';
-                                document.getElementById('series_total_books').value = book.series_total_books || '';
-                                
+                                fillAddBookForm(book);
+                                renderAddCoverGallery(data.filter(candidate => candidate.cover_url).slice(0, 5));
                                 resultsDiv.style.display = 'none';
                             });
 
@@ -1626,17 +1681,107 @@
                 });
         }
 
+        function fillAddBookForm(book) {
+            document.getElementById('title').value = book.title || '';
+            document.getElementById('author').value = book.author || '';
+            document.getElementById('isbn').value = book.isbn || '';
+            document.getElementById('publication_year').value = book.publication_year || '';
+            document.getElementById('description').value = book.description || '';
+            document.getElementById('rating').value = book.rating || '';
+            document.getElementById('genre').value = book.genre || '';
+            document.getElementById('series_name').value = book.series_name || '';
+            document.getElementById('series_number').value = book.series_number || '';
+            document.getElementById('series_total_books').value = book.series_total_books || '';
+            setAddCover(book.cover_url || '');
+        }
+
+        function setAddCover(url) {
+            const hiddenInput = document.getElementById('cover_url');
+            const visibleInput = document.getElementById('addCoverUrl');
+            const preview = document.getElementById('addCoverPreview');
+            hiddenInput.value = url || '';
+            visibleInput.value = url || '';
+            if (url) {
+                preview.src = url;
+                preview.style.display = 'block';
+            } else {
+                preview.removeAttribute('src');
+                preview.style.display = 'none';
+            }
+        }
+
+        function clearAddCover() {
+            setAddCover('');
+            document.getElementById('addCoverGallery').innerHTML = '';
+        }
+
+        function renderAddCoverGallery(books) {
+            const gallery = document.getElementById('addCoverGallery');
+            gallery.innerHTML = '';
+
+            books.forEach(book => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'cover-choice';
+                button.innerHTML = `
+                    <img src="${book.cover_url}" alt="Cover option" loading="lazy" decoding="async">
+                    <small>${book.title || 'Cover option'}</small>
+                `;
+                button.addEventListener('click', () => {
+                    setAddCover(book.cover_url);
+                });
+                gallery.appendChild(button);
+            });
+        }
+
+        function searchForAddCover() {
+            const title = document.getElementById('title').value;
+            const author = document.getElementById('author').value;
+            const query = `${title} ${author}`.trim() || document.getElementById('bookSearchInput').value.trim();
+            
+            if (!query) {
+                alert('Please enter a title and/or author first');
+                return;
+            }
+
+            fetch(`/search_book?q=${encodeURIComponent(query)}`)
+                .then(async response => {
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Error searching for cover image');
+                    }
+                    return data;
+                })
+                .then(data => {
+                    const coverChoices = data.filter(book => book.cover_url).slice(0, 5);
+                    renderAddCoverGallery(coverChoices);
+                    if (coverChoices.length && !document.getElementById('cover_url').value) {
+                        setAddCover(coverChoices[0].cover_url);
+                    }
+                    if (!coverChoices.length) {
+                        alert('No cover image found for this book');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error searching for cover image: ' + error.message);
+                });
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             initializeStrictCoverLazyLoading();
-            {% for book in books %}
-                initializeBookRating({{ book.id }}, {{ book.personal_rating or 0 }});
-                initializeFormTracking({{ book.id }});
-            {% endfor %}
+            initializeVisibleBookControls();
+        });
+
+        document.getElementById('addCoverUrl').addEventListener('input', function() {
+            setAddCover(this.value);
         });
 
         function initializeFormTracking(bookId) {
             const form = document.getElementById(`editForm${bookId}`);
             const saveButton = document.getElementById(`saveButton${bookId}`);
+            if (!form || !saveButton) return;
+
             form.dataset.savedState = JSON.stringify(getFormState(form));
             syncSaveButton(bookId);
 
@@ -2001,9 +2146,10 @@
                 if (applyBulkLocation) applyBulkLocation.disabled = checked === 0;
             }
 
-            function filterAndSortBooks() {
+            function filterAndSortBooks(options = {}) {
                 if (!bookGrid) return;
 
+                const shouldReorder = options.reorder !== false;
                 const books = Array.from(bookGrid.children);
                 const searchTerm = (filterInput?.value || '').toLowerCase();
                 const archiveStatus = statusFilter?.value || 'active';
@@ -2016,8 +2162,7 @@
                     const isArchived = book.dataset.archived === 'true';
                     const cardSeries = (book.dataset.seriesName || '').toLowerCase();
                     
-                    // Search the rendered card text so title, author, series, genre, location, and notes are covered.
-                    const searchableText = book.textContent.toLowerCase();
+                    const searchableText = searchTerm ? book.textContent.toLowerCase() : '';
                     
                     // Apply filters
                     let visible = searchTerm === '' || searchableText.includes(searchTerm);
@@ -2048,6 +2193,10 @@
 
                 if (visibleCount) {
                     visibleCount.textContent = books.filter(book => book.style.display !== 'none').length;
+                }
+
+                if (!shouldReorder) {
+                    return;
                 }
 
                 // Sort visible books
@@ -2213,7 +2362,7 @@
             }
 
             // Initialize sorting
-            filterAndSortBooks();
+            filterAndSortBooks({ reorder: false });
             updateBulkSelectionState();
         });
 

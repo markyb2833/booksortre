@@ -12,7 +12,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from .extensions import db
-from .google_books import search_google_books
+from .google_books import GoogleBooksUnavailable, search_google_books
 from .models import AppSetting, Book
 
 main = Blueprint("main", __name__)
@@ -494,8 +494,15 @@ def search_book():
 
     try:
         return jsonify(search_google_books(query))
+    except GoogleBooksUnavailable as exc:
+        return jsonify({"error": str(exc), "manual_add_available": True}), 503
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 502
+        return jsonify(
+            {
+                "error": "Book search is unavailable right now. Try again in a moment, or type the book details manually.",
+                "manual_add_available": True,
+            }
+        ), 503
 
 
 @main.route("/add_book", methods=["GET", "POST"])
