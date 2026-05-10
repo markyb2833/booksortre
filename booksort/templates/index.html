@@ -65,6 +65,13 @@
             background-color: #2d2d2d;
             padding: 0.5rem;
         }
+        .book-cover[data-lazy-cover] {
+            opacity: 0;
+            transition: opacity 0.18s ease;
+        }
+        .book-cover.cover-loaded {
+            opacity: 1;
+        }
         .rating {
             color: #ffd700;
         }
@@ -1198,7 +1205,7 @@
                             </div>
                             <div class="cover-container">
                                 {% if book.cover_url %}
-                                    <img src="{{ book.cover_url }}" class="book-cover" alt="{{ book.title }} cover" loading="lazy" decoding="async" width="120" height="180">
+                                    <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" data-lazy-cover="{{ book.cover_url }}" class="book-cover" alt="{{ book.title }} cover" decoding="async" width="120" height="180">
                                 {% else %}
                                     <div class="no-cover">
                                         <i class="bi bi-book"></i>
@@ -1521,6 +1528,43 @@
             syncBackToTopButton();
         }
 
+        function loadLazyCover(image) {
+            const coverUrl = image.dataset.lazyCover;
+            if (!coverUrl || image.dataset.lazyLoaded === 'true') return;
+
+            image.dataset.lazyLoaded = 'true';
+            image.addEventListener('load', () => {
+                image.classList.add('cover-loaded');
+            }, { once: true });
+            image.addEventListener('error', () => {
+                image.classList.add('cover-loaded', 'cover-error');
+            }, { once: true });
+            image.src = coverUrl;
+        }
+
+        function initializeStrictCoverLazyLoading() {
+            const lazyCovers = document.querySelectorAll('img[data-lazy-cover]');
+            if (!lazyCovers.length) return;
+
+            if (!('IntersectionObserver' in window)) {
+                lazyCovers.forEach(loadLazyCover);
+                return;
+            }
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    loadLazyCover(entry.target);
+                    observer.unobserve(entry.target);
+                });
+            }, {
+                rootMargin: '500px 0px',
+                threshold: 0.01,
+            });
+
+            lazyCovers.forEach(image => observer.observe(image));
+        }
+
         function searchBooks() {
             const query = document.getElementById('bookSearchInput').value;
             if (!query) return;
@@ -1583,6 +1627,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            initializeStrictCoverLazyLoading();
             {% for book in books %}
                 initializeBookRating({{ book.id }}, {{ book.personal_rating or 0 }});
                 initializeFormTracking({{ book.id }});
