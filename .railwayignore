@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+instance/booksort.db
+instance/*.sqlite
+instance/*.sqlite3
+tests/__pycache__/
+tmp*/

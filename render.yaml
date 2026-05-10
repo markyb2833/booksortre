@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: booksort
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.0
+      - key: BOOKSORT_SECRET_KEY
+        generateValue: true
