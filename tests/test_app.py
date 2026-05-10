@@ -49,6 +49,29 @@ class BookSortTests(unittest.TestCase):
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json["book_count"], 1)
 
+    def test_password_gate_when_configured(self):
+        self.app.config["BOOKSORT_PASSWORD"] = "secret-password"
+
+        locked_home = self.client.get("/")
+        public_health = self.client.get("/health")
+        bad_login = self.client.post("/login", data={"password": "wrong"})
+        good_login = self.client.post("/login", data={"password": "secret-password"})
+        unlocked_home = self.client.get("/")
+        logout = self.client.post("/logout")
+        locked_again = self.client.get("/")
+
+        self.assertEqual(locked_home.status_code, 302)
+        self.assertIn("/login", locked_home.headers["Location"])
+        self.assertEqual(public_health.status_code, 200)
+        self.assertEqual(public_health.json, {"status": "ok"})
+        self.assertEqual(bad_login.status_code, 200)
+        self.assertIn(b"That password", bad_login.data)
+        self.assertEqual(good_login.status_code, 302)
+        self.assertIn("Expires=", good_login.headers["Set-Cookie"])
+        self.assertEqual(unlocked_home.status_code, 200)
+        self.assertEqual(logout.status_code, 302)
+        self.assertEqual(locked_again.status_code, 302)
+
     def test_settings_and_backup_timestamp(self):
         self.add_book()
 

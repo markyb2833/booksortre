@@ -22,6 +22,9 @@
             flex-wrap: wrap;
             gap: 0.5rem;
         }
+        .nav-actions form {
+            margin: 0;
+        }
         .card {
             background-color: #1e1e1e;
             border: 1px solid #333;
@@ -566,6 +569,29 @@
             display: block;
             margin-bottom: 0.4rem;
         }
+        .back-to-top {
+            position: fixed;
+            right: 1rem;
+            bottom: 1rem;
+            z-index: 1030;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            min-height: 44px;
+            padding: 0.65rem 0.9rem;
+            border-radius: 999px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(10px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .back-to-top.is-visible {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+        }
         
         /* Series Display Styles */
         .series-banner {
@@ -810,6 +836,12 @@
             .cover-choice img {
                 height: 140px;
             }
+
+            .back-to-top {
+                right: max(0.75rem, env(safe-area-inset-right));
+                bottom: max(0.75rem, env(safe-area-inset-bottom));
+                max-width: calc(100vw - 1.5rem);
+            }
         }
 
         @media (max-width: 420px) {
@@ -846,6 +878,11 @@
                 <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('main.settings') }}">
                     <i class="bi bi-gear"></i> Settings
                 </a>
+                <form method="post" action="{{ url_for('main.logout') }}">
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </button>
+                </form>
             </div>
         </div>
     </nav>
@@ -1161,7 +1198,7 @@
                             </div>
                             <div class="cover-container">
                                 {% if book.cover_url %}
-                                    <img src="{{ book.cover_url }}" class="book-cover" alt="{{ book.title }} cover">
+                                    <img src="{{ book.cover_url }}" class="book-cover" alt="{{ book.title }} cover" loading="lazy" decoding="async" width="120" height="180">
                                 {% else %}
                                     <div class="no-cover">
                                         <i class="bi bi-book"></i>
@@ -1429,7 +1466,7 @@
                                 <button type="button" class="btn btn-outline-secondary" onclick="clearEditCover()">Clear</button>
                             </div>
                             <div class="mt-2">
-                                <img id="editCoverPreview" src="" alt="Cover preview" style="max-width: 100px; max-height: 150px; display: none;" class="border">
+                                <img id="editCoverPreview" src="" alt="Cover preview" style="max-width: 100px; max-height: 150px; display: none;" class="border" loading="lazy" decoding="async">
                             </div>
                             <div class="cover-gallery mt-3" id="coverGallery"></div>
                         </div>
@@ -1442,6 +1479,11 @@
             </div>
         </div>
     </div>
+
+    <button class="btn btn-primary back-to-top" type="button" id="backToTopButton" aria-label="Back to top">
+        <i class="bi bi-arrow-up"></i>
+        <span>Back to top</span>
+    </button>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -1466,6 +1508,19 @@
             }
         });
 
+        const backToTopButton = document.getElementById('backToTopButton');
+        if (backToTopButton) {
+            const syncBackToTopButton = () => {
+                backToTopButton.classList.toggle('is-visible', window.scrollY > 500);
+            };
+
+            backToTopButton.addEventListener('click', () => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+            window.addEventListener('scroll', syncBackToTopButton, { passive: true });
+            syncBackToTopButton();
+        }
+
         function searchBooks() {
             const query = document.getElementById('bookSearchInput').value;
             if (!query) return;
@@ -1488,7 +1543,7 @@
                             const resultDiv = document.createElement('div');
                             resultDiv.className = 'book-result';
                             resultDiv.innerHTML = `
-                                ${book.cover_url ? `<img src="${book.cover_url}" class="result-cover" alt="Book cover">` : 
+                                ${book.cover_url ? `<img src="${book.cover_url}" class="result-cover" alt="Book cover" loading="lazy" decoding="async" width="60" height="90">` : 
                                            '<div class="result-cover d-flex align-items-center justify-content-center"><i class="bi bi-book"></i></div>'}
                                 <div>
                                     <h5 class="mb-1">${book.title || 'Untitled'}</h5>
@@ -2381,7 +2436,7 @@
                 button.type = 'button';
                 button.className = 'cover-choice';
                 button.innerHTML = `
-                    <img src="${book.cover_url}" alt="Cover option">
+                    <img src="${book.cover_url}" alt="Cover option" loading="lazy" decoding="async">
                     <small>${book.title || 'Cover option'}</small>
                 `;
                 button.addEventListener('click', () => {

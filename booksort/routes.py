@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import csv
+import hmac
 from collections import defaultdict
 from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 
-from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, send_file, session, url_for
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
@@ -15,6 +16,71 @@ from .google_books import search_google_books
 from .models import AppSetting, Book
 
 main = Blueprint("main", __name__)
+
+AUTH_SESSION_KEY = "booksort_authenticated"
+AUTH_EXEMPT_ENDPOINTS = {"main.login", "main.logout", "main.health", "static"}
+
+
+def _auth_password() -> str | None:
+    password = current_app.config.get("BOOKSORT_PASSWORD")
+    if password in (None, ""):
+        return None
+    return str(password)
+
+
+def _auth_enabled() -> bool:
+    return _auth_password() is not None
+
+
+def _is_authenticated() -> bool:
+    return bool(session.get(AUTH_SESSION_KEY))
+
+
+def _safe_next_url(value: str | None) -> str:
+    if value and value.startswith("/") and not value.startswith("//"):
+        return value
+    return url_for("main.index")
+
+
+@main.before_app_request
+def require_password_login():
+    if not _auth_enabled() or _is_authenticated():
+        return None
+    if request.endpoint in AUTH_EXEMPT_ENDPOINTS:
+        return None
+    if request.path.startswith("/static/"):
+        return None
+
+    if request.is_json or request.method != "GET":
+        return jsonify({"error": "Login required"}), 401
+
+    return redirect(url_for("main.login", next=request.full_path.rstrip("?")))
+
+
+@main.route("/login", methods=["GET", "POST"])
+def login():
+    password = _auth_password()
+    if password is None:
+        return redirect(url_for("main.index"))
+
+    error = None
+    next_url = _safe_next_url(request.values.get("next"))
+    if request.method == "POST":
+        submitted_password = request.form.get("password", "")
+        if hmac.compare_digest(submitted_password, password):
+            session.clear()
+            session.permanent = True
+            session[AUTH_SESSION_KEY] = True
+            return redirect(next_url)
+        error = "That password didn't match."
+
+    return render_template("login.html", error=error, next_url=next_url)
+
+
+@main.route("/logout", methods=["GET", "POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("main.login"))
 
 
 def _float_or_none(value: object) -> float | None:
@@ -264,15 +330,17 @@ def index():
 
 @main.get("/health")
 def health():
-    counts = _counts()
-    return jsonify(
-        {
-            "status": "ok",
-            "book_count": counts["book_count"],
-            "active_count": counts["active_count"],
-            "archived_count": counts["archived_count"],
-        }
-    )
+    payload = {"status": "ok"}
+    if not _auth_enabled() or _is_authenticated():
+        counts = _counts()
+        payload.update(
+            {
+                "book_count": counts["book_count"],
+                "active_count": counts["active_count"],
+                "archived_count": counts["archived_count"],
+            }
+        )
+    return jsonify(payload)
 
 
 @main.get("/backup/database")

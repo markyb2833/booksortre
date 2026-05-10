@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from flask import Flask
@@ -26,11 +27,22 @@ def create_app(config: dict | None = None) -> Flask:
     default_db_path = Path(app.instance_path) / "booksort.db"
     app.config.from_mapping(
         SECRET_KEY="dev-change-me",
+        BOOKSORT_PASSWORD=None,
+        PERMANENT_SESSION_LIFETIME=timedelta(days=3650),
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
         SQLALCHEMY_DATABASE_URI=f"sqlite:///{default_db_path.as_posix()}",
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         JSON_SORT_KEYS=False,
     )
     app.config.from_prefixed_env("BOOKSORT")
+    app.config["BOOKSORT_PASSWORD"] = (
+        os.environ.get("BOOKSORT_PASSWORD")
+        or app.config.get("BOOKSORT_PASSWORD")
+        or app.config.get("PASSWORD")
+    )
+    if os.environ.get("RAILWAY_ENVIRONMENT") and "BOOKSORT_SESSION_COOKIE_SECURE" not in os.environ:
+        app.config["SESSION_COOKIE_SECURE"] = True
 
     database_url = os.environ.get("DATABASE_URL") or app.config.get("DATABASE_URL")
     if database_url:

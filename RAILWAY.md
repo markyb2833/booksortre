@@ -33,6 +33,7 @@ and keeps the app close to how it runs locally.
 
    ```text
    BOOKSORT_SECRET_KEY=<a long random secret>
+   BOOKSORT_PASSWORD=<the password you want to use to open the site>
    ```
 
 6. Deploy. Railway reads `railway.json`, installs `requirements.txt`, starts
@@ -48,6 +49,13 @@ and keeps the app close to how it runs locally.
   Railway database does not already exist.
 - Once a Railway Volume has `booksort.db`, deploys will keep using that existing
   database instead of overwriting it.
+
+## Password protection
+
+If `BOOKSORT_PASSWORD` is set, every app page and write endpoint requires that
+password. The browser login is stored as a long-lived signed session cookie.
+`/health` stays public so Railway can check the deployment, but it only returns
+minimal status while the app is locked.
 
 ## Updating the seed database
 

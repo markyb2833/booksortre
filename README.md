@@ -45,3 +45,4 @@ Railway deployment files are included:
 - `RAILWAY.md` - step-by-step Railway notes
 
 For the simple one-person setup, add a Railway Volume mounted at `/app/instance`.
+Set `BOOKSORT_PASSWORD` in Railway to enable the password gate.
